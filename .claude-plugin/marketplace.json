@@ -10,7 +10,7 @@
     {
       "name": "respect",
       "description": "Build trust with your AI agent. Claude learns from feedback, earns better behavior over time.",
-      "version": "3.5.0",
+      "version": "3.5.1",
       "author": {
         "name": "Andrei Zhukov",
         "url": "https://github.com/NixoN2"
