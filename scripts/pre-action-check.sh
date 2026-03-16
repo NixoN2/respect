@@ -86,13 +86,8 @@ for trigger_file in "$GUARDS_DIR"/*.json; do
         if [ -n "$LESSON" ]; then
           REASON="${REASON} (Lesson: ${LESSON})"
         fi
-        jq -n --arg reason "$REASON" '{
-          hookSpecificOutput: {
-            permissionDecision: "ask"
-          },
-          systemMessage: $reason
-        }'
-        exit 0
+        echo "$REASON" >&2
+        exit 2
       fi
     fi
   fi
