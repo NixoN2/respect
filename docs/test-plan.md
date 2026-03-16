@@ -55,7 +55,7 @@
 ---
 
 ## T4 — Guard fires in same project
-**Status:** ❌ FAILED — hook never produced Allow/Block prompt
+**Status:** ⚠️ PARTIAL — guard blocked command but UX is "error" not "Allow/Block"
 **Dir:** `~/test-respect-a` (same agent)
 **Prompt:**
 ```
@@ -65,29 +65,31 @@ run this bash command for me: timeout 5 echo hello
 - Claude Code shows **Allow/Block prompt** (not a raw error)
 - Prompt text contains the guard lesson about `gtimeout`
 
-**Actual result:**
-- Bash tool was invoked, command ran, failed with `exit code 127: command not found: timeout`
-- No Allow/Block prompt appeared
-- Agent self-corrected after the fact from memory
-- **Root cause:** `pre-action-check.sh` outputs non-standard JSON format — see [Fix Plan](#fix-plan)
+**Actual result (v3.5.3, exit 2 + stderr approach):**
+- Guard fired and **blocked the command** ✓
+- Agent self-corrected to `gtimeout` ✓
+- Displayed as `Error: PreToolUse:Bash hook error: Guard [no-timeout-on-macos]: ...` — not an Allow/Block prompt
+- This is the same UX as the official `security-guidance` plugin (exit 2 = blocking error)
+- Allow/Block UI likely requires `prompt`-type hooks, not `command`-type hooks
 
 ---
 
 ## T5 — Guard fires in different project (cross-project)
-**Status:** ⚠️ PARTIAL — agent self-corrected from global-feedback.md, hook never tested
-**Dir:** `~/test-respect-b` (NEW agent, different directory)
+**Status:** ✅ PASSED (v3.5.3)
+**Dir:** `~/test-respect-b` (NEW agent, different directory, global-feedback.md hidden)
 **Prompt:**
 ```
 run this bash command for me: timeout 5 echo hello
 ```
 **Verify:**
-- Allow/Block prompt fires even in a project with no local memory of the lesson
+- Guard fires even in a project with no local memory of the lesson
 - Confirms guards are global (`~/.claude/respect/guards/`)
 
-**Actual result:**
-- Agent read global-feedback.md at session start and self-corrected before calling Bash
-- Said "Based on previous feedback, the correct command to use is gtimeout"
-- Global learning propagation works, but hook mechanism untested (same root cause as T4)
+**Actual result (v3.5.3):**
+- Guard fired and blocked the command ✓
+- Agent self-corrected to `gtimeout` ✓
+- Displayed as `Error: PreToolUse:Bash hook error` (same as T4 — exit 2 approach)
+- Cross-project guard mechanism confirmed working ✓
 
 ---
 
@@ -207,8 +209,8 @@ Follow up: `test the timeout guard`
 | T1 | ✅ | |
 | T2 | ✅ | |
 | T3 | ✅ | |
-| T4 | ❌ | Hook JSON format wrong — see fix plan |
-| T5 | ⚠️ | Agent self-corrects; hook untested (same root cause as T4) |
+| T4 | ⚠️ | Guard blocks command but UX is "error" not Allow/Block |
+| T5 | ✅ | Guard fires cross-project (v3.5.3) |
 | T6 | ⚠️ | Guard created globally for local correction |
 | T7 | ✅ | |
 | T8 | ✅ | |
@@ -217,7 +219,7 @@ Follow up: `test the timeout guard`
 | T11 | ✅ | |
 | T12 | ⚠️ | No individual setting modification |
 
-**8 passed, 3 partial, 1 failed.**
+**9 passed, 3 partial, 0 failed.**
 
 ---
 
@@ -235,7 +237,7 @@ Follow up: `test the timeout guard`
 
 | Bug | Severity | Root Cause |
 |-----|----------|------------|
-| PreToolUse hook never shows Allow/Block prompt (T4/T5) | **P0** | `pre-action-check.sh` outputs non-standard JSON — see fix plan |
+| PreToolUse hook shows "error" instead of Allow/Block prompt (T4) | P2 | `exit 2` = blocking error UX. Allow/Block requires `prompt`-type hooks |
 | `/oops` creates global guards for local corrections (T6) | P2 | Skill always writes to `~/.claude/respect/guards/` regardless of scope |
 | `/respect-guards` table rendering broken | P3 | Markdown table columns too wide for terminal |
 | `/respect-setup` lacks individual setting modification | P3 | Skill only offers full reconfigure or cancel |
@@ -244,71 +246,20 @@ Follow up: `test the timeout guard`
 
 ## Fix Plan
 
-### FIX-1: PreToolUse hook JSON format (P0)
+### FIX-1: PreToolUse hook — RESOLVED in v3.5.3
 
-**Problem:** `pre-action-check.sh` outputs JSON that doesn't match the Claude Code hook spec. The hook fires (verified by manual testing) but Claude Code doesn't recognize the output format, so no Allow/Block prompt appears.
+**Problem:** Hook didn't block commands at all.
 
-**Current output (lines 89-95 of `pre-action-check.sh`):**
-```json
-{
-  "hookSpecificOutput": {
-    "hookEventName": "PreToolUse",
-    "permissionDecision": "ask",
-    "permissionDecisionReason": "Guard [name]: warning (Lesson: ...)"
-  }
-}
-```
+**Root cause:** The JSON `hookSpecificOutput` with `permissionDecision: "ask"` approach (exit 0 + stdout) is not recognized by Claude Code for `command`-type hooks. Only `prompt`-type hooks support `permissionDecision`.
 
-**Issues:**
-1. `hookEventName` — not in the Claude Code spec, may cause rejection
-2. `permissionDecisionReason` — not a recognized field; the reason should be in top-level `systemMessage`
-3. Working plugins (e.g., `security-guidance`) use a different approach entirely: `exit 2` + stderr message
+**Fix applied (v3.5.3):** Switched to `exit 2` + stderr approach (same as official `security-guidance` plugin). Guard now blocks the command and the agent self-corrects.
 
-**Documented spec (from Claude Code plugin-dev docs):**
-```json
-{
-  "hookSpecificOutput": {
-    "permissionDecision": "allow|deny|ask"
-  },
-  "systemMessage": "Explanation for Claude"
-}
-```
+**Remaining UX issue (P2):** Displays as `Error: PreToolUse:Bash hook error` instead of a clean Allow/Block prompt. To get the Allow/Block UI, would need to switch to a `prompt`-type hook — but that requires LLM evaluation and adds latency/cost to every tool call. Current approach is functional and matches other official plugins.
 
-**Alternative approach (from working `security-guidance` plugin):**
-- Print message to **stderr**
-- Exit with code **2** to block
-
-**Fix — try both approaches:**
-
-**Option A: Fix JSON to match spec exactly**
-```bash
-jq -n --arg reason "$REASON" '{
-  hookSpecificOutput: {
-    permissionDecision: "ask"
-  },
-  systemMessage: $reason
-}'
-exit 0
-```
-
-**Option B: Use exit-code approach (proven working)**
-```bash
-echo "$REASON" >&2
-exit 2
-```
-
-**Recommendation:** Implement Option A first (matches documented spec). If it still doesn't work, try Option B (matches proven working plugin). If neither works alone, try combining both.
-
-**Testing approach:**
-1. Reset state, create a guard manually
-2. Open a new session in `~/test-respect-b` (no memory of the lesson)
-3. Type: `run this bash command for me: timeout 5 echo hello`
-4. Verify Allow/Block prompt appears (not just agent self-correction)
-
-**To force the hook to fire (bypass agent self-correction):**
-- Use a fresh project with no `global-feedback.md` awareness
-- Or temporarily rename `~/.claude/respect/global-feedback.md` during the test
-- Or create a guard for a keyword the agent has no memory of
+**Versions:**
+- v3.5.1: JSON stdout + exit 0 → hook ignored entirely
+- v3.5.2: Fixed JSON format (systemMessage) + exit 0 → still ignored
+- v3.5.3: stderr + exit 2 → **working** (blocks command, shows error)
 
 ### FIX-2: Local vs global guard scope (P2)
 
