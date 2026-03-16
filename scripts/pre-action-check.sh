@@ -96,7 +96,7 @@ for guards_dir in $GUARD_DIRS; do
       if [ -x "$GUARD_SCRIPT" ]; then
         # Execute guard script with tool context
         GUARD_OUTPUT=""
-        if GUARD_OUTPUT=$(bash "$GUARD_SCRIPT" "$TOOL_NAME" "$TOOL_INPUT_RAW" 2>/dev/null); then
+        if GUARD_OUTPUT=$(bash "$GUARD_SCRIPT" "$TOOL_NAME" "$TOOL_INPUT" "$TOOL_INPUT_RAW" 2>/dev/null); then
           # Guard passed (exit 0) - no warning needed
           continue
         fi

@@ -103,7 +103,8 @@ Accepts correction size anywhere in the message: `/oops medium`, `/oops that was
    # Guard: [summary]
    # Lesson: [lesson text]
    TOOL_NAME="$1"
-   TOOL_INPUT="$2"
+   TOOL_INPUT="$2"           # flattened string of all tool_input values (for pattern matching)
+   TOOL_INPUT_RAW="${3:-$2}"  # raw JSON tool_input (for extracting specific fields like file_path)
 
    # [Check logic here - exit 1 to warn, exit 0 to pass]
    exit 0
@@ -134,7 +135,7 @@ Accepts correction size anywhere in the message: `/oops medium`, `/oops that was
      - Add MCP patterns like `mcp__.*slack.*` for Slack-specific guards
      - Add `mcp__.*` to match ALL MCP tools
      - Mix with standard tools: `["Bash", "mcp__.*datadog.*"]`
-   - The guard script receives TOOL_NAME and TOOL_INPUT as arguments
+   - The guard script receives `$1` = TOOL_NAME, `$2` = flattened tool_input string (for pattern matching), `$3` = raw JSON tool_input (for extracting fields like file_path)
    - Write a concrete, testable check: date checks, file existence, grep patterns, etc.
    - If the check CANNOT be automated (e.g., "use better variable names"), skip guard generation
 

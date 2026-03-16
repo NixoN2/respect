@@ -79,7 +79,7 @@ When the user asks to test a guard:
 - **Global** guard files are in `~/.claude/respect/guards/`
 - **Local** guard files are in `~/.claude/projects/[ENCODED_CWD]/guards/`
 - Each guard has a `.sh` (executable script) and `.json` (trigger metadata) file
-- The `.sh` script receives `TOOL_NAME` as `$1` and `TOOL_INPUT` as `$2`
+- The `.sh` script receives `TOOL_NAME` as `$1`, flattened `TOOL_INPUT` as `$2` (for pattern matching), and raw JSON `TOOL_INPUT` as `$3` (for field extraction)
 - Exit 1 with a message = warn the user. Exit 0 = allow the action.
 - The `.json` `tools` field (optional) controls which tools the guard applies to:
   - Omitted = defaults to Bash/Write/Edit/NotebookEdit
